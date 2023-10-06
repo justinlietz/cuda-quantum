@@ -1,0 +1,9 @@
+source-sha: 796ba6c11bc0ac2a2f5261ac0691c257d2442db8
+cuda-quantum-dev-image: ghcr.io/nvidia/cuda-quantum-dev@sha256:6b80e89bbb7aba69499c9a0fdbdc46eae327ab97c1c4fbfa077da20dd6e2aa4a
+cuda-quantum-image: ghcr.io/nvidia/cuda-quantum@sha256:d58d23ed59c43e1615d20ca90b60f337ab3c8b67ecbfb4d1700babe4bdb0bbdf
+cuda-quantum-ngc-image: nvcr.io/nvidia/nightly/cuda-quantum@sha256:053a9936f9b3a309ae91fdc3619479024ae96922901d479a014b65eb36ed84dd
+cuda-quantum-devdeps-image: ghcr.io/nvidia/cuda-quantum-devdeps@sha256:3c680daddcfeb64b984d7078e0337607eb262c70b053075ae2109d16f9055fdd
+platforms: linux/arm64,linux/amd64
+asset-name: build_info
+release-id: 6436670984_build_info
+artifacts-url: https://api.github.com/repos/NVIDIA/cuda-quantum/actions/runs/6435923235/artifacts
