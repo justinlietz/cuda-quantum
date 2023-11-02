@@ -1,0 +1,6 @@
+source-sha: acbb0cb976534fd2a6f1a2391fedffd44a4f0293
+cuda-quantum-wheeldeps-image: ghcr.io/nvidia/cuda-quantum-devdeps@sha256:aef6c4bcc30b5a2f554874b5c4217249b4f7b20b301de4a40fc87706575e4aba
+platform: linux/arm64
+asset-name: python_info_arm64
+release-id: 6739470425_python_info_arm64
+artifacts-url: https://api.github.com/repos/NVIDIA/cuda-quantum/actions/runs/6738742963/artifacts
