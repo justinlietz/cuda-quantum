@@ -1416,7 +1416,8 @@ bool QuakeBridgeVisitor::VisitCallExpr(clang::CallExpr *x) {
       Type resTy = builder.getI1Type();
       if (useStdvec)
         resTy = cc::StdvecType::get(resTy);
-      return pushValue(builder.create<quake::DiscriminateOp>(loc, resTy, measure));
+      return pushValue(
+          builder.create<quake::DiscriminateOp>(loc, resTy, measure));
     }
 
     // Handle the quantum gate set.
