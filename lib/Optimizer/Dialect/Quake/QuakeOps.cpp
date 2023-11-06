@@ -593,13 +593,13 @@ static LogicalResult verifyMeasurements(Operation *const op,
                                         const Type bitsType) {
   bool mustBeStdvec =
       targetsType.size() > 1 ||
-      (targetsType.size() == 1 && targetsType[0].isa<quake::VeqType>());
+      (targetsType.size() == 1 && isa<quake::VeqType>(targetsType[0]));
   if (mustBeStdvec) {
-    if (!op->getResult(0).getType().isa<cudaq::cc::StdvecType>())
+    if (!isa<cudaq::cc::StdvecType>(op->getResult(0).getType()))
       return op->emitOpError("must return `!cc.stdvec<!quake.measure>`, when "
                              "measuring a qreg, a series of qubits, or both");
   } else {
-    if (!op->getResult(0).getType().isa<quake::MeasureType>())
+    if (!isa<quake::MeasureType>(op->getResult(0).getType()))
       return op->emitOpError(
           "must return `!quake.measure` when measuring exactly one qubit");
   }
@@ -619,6 +619,25 @@ LogicalResult quake::MyOp::verify() {
 LogicalResult quake::MzOp::verify() {
   return verifyMeasurements(getOperation(), getTargets().getType(),
                             getMeasOut().getType());
+}
+
+//===----------------------------------------------------------------------===//
+// Discriminate
+//===----------------------------------------------------------------------===//
+
+LogicalResult quake::DiscriminateOp::verify() {
+  if (isa<cudaq::cc::StdvecType>(getMeasurement().getType())) {
+    auto stdvecTy = dyn_cast<cudaq::cc::StdvecType>(getResult().getType());
+    if (!stdvecTy || !isa<IntegerType>(stdvecTy.getElementType()))
+      return emitOpError("must return a !cc.stdvec<integral> type, when "
+                         "discriminating a qreg, a series of qubits, or both");
+  } else {
+    auto measTy = isa<quake::MeasureType>(getMeasurement().getType());
+    if (!measTy || !isa<IntegerType>(getResult().getType()))
+      return emitOpError(
+          "must return integral type when discriminating exactly one qubit");
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

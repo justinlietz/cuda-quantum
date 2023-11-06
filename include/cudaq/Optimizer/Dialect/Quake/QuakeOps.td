@@ -686,7 +686,7 @@ def DiscriminateOp : QuakeOp<"discriminate", [Pure]> {
     $measurement `:` functional-type(operands, results) attr-dict
   }];
 
-  //let hasVerifier = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
