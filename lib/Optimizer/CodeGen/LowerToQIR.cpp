@@ -801,7 +801,7 @@ public:
     auto context = parentModule->getContext();
 
     std::string qFunctionName = cudaq::opt::QIRMeasure;
-    Attribute regName = measure->getAttr("registerName");
+    Attribute regName = measure.getRegisterNameAttr();
     std::vector<Type> funcTypes{cudaq::opt::getQubitType(context)};
     std::vector<Value> args{adaptor.getOperands().front()};
 
@@ -939,8 +939,7 @@ public:
 
 class AllocaOpPattern : public ConvertOpToLLVMPattern<cudaq::cc::AllocaOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::AllocaOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   // Convert each cc::AllocaOp to an LLVM::AllocaOp.
   LogicalResult
@@ -968,8 +967,7 @@ public:
 class CallableClosureOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::CallableClosureOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::CallableClosureOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::CallableClosureOp callable, OpAdaptor adaptor,
@@ -996,8 +994,7 @@ public:
 class CallableFuncOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::CallableFuncOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::CallableFuncOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::CallableFuncOp callable, OpAdaptor adaptor,
@@ -1019,8 +1016,7 @@ public:
 class CallCallableOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::CallCallableOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::CallCallableOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::CallCallableOp call, OpAdaptor adaptor,
@@ -1086,8 +1082,7 @@ public:
 
 class CastOpPattern : public ConvertOpToLLVMPattern<cudaq::cc::CastOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::CastOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   // Convert each cc::CastOp to one of the flavors of LLVM casts.
   LogicalResult
@@ -1157,8 +1152,7 @@ public:
 class ComputePtrOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::ComputePtrOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::ComputePtrOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   // Convert each cc::ComputePtrOp to an LLVM::GEPOp.
   LogicalResult
@@ -1198,8 +1192,7 @@ public:
 class ExtractValueOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::ExtractValueOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::ExtractValueOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::ExtractValueOp extract, OpAdaptor adaptor,
@@ -1214,8 +1207,7 @@ public:
 class FuncToPtrOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::FuncToPtrOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::FuncToPtrOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   // This becomes a bitcast op.
   LogicalResult
@@ -1231,8 +1223,7 @@ public:
 class InsertValueOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::InsertValueOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::InsertValueOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::InsertValueOp insert, OpAdaptor adaptor,
@@ -1248,8 +1239,7 @@ public:
 class InstantiateCallableOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::InstantiateCallableOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::InstantiateCallableOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::InstantiateCallableOp callable, OpAdaptor adaptor,
@@ -1311,8 +1301,7 @@ public:
 
 class LoadOpPattern : public ConvertOpToLLVMPattern<cudaq::cc::LoadOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::LoadOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   // Convert each cc::LoadOp to an LLVM::LoadOp.
   LogicalResult
@@ -1328,8 +1317,7 @@ public:
 class StdvecDataOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::StdvecDataOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::StdvecDataOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::StdvecDataOp data, OpAdaptor adaptor,
@@ -1351,8 +1339,7 @@ public:
 class StdvecInitOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::StdvecInitOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::StdvecInitOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::StdvecInitOp init, OpAdaptor adaptor,
@@ -1379,8 +1366,7 @@ public:
 class StdvecSizeOpPattern
     : public ConvertOpToLLVMPattern<cudaq::cc::StdvecSizeOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::StdvecSizeOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::StdvecSizeOp size, OpAdaptor adaptor,
@@ -1433,8 +1419,7 @@ public:
 
 class StoreOpPattern : public ConvertOpToLLVMPattern<cudaq::cc::StoreOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::StoreOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   // Convert each cc::StoreOp to an LLVM::StoreOp.
   LogicalResult
@@ -1446,10 +1431,23 @@ public:
   }
 };
 
+class DiscriminateOpPattern
+    : public ConvertOpToLLVMPattern<quake::DiscriminateOp> {
+public:
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(quake::DiscriminateOp discr, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto m = discr.getMeasurement();
+    rewriter.replaceOp(discr, m);
+    return success();
+  }
+};
+
 class UndefOpPattern : public ConvertOpToLLVMPattern<cudaq::cc::UndefOp> {
 public:
-  using Base = ConvertOpToLLVMPattern<cudaq::cc::UndefOp>;
-  using Base::Base;
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
 
   LogicalResult
   matchAndRewrite(cudaq::cc::UndefOp undef, OpAdaptor adaptor,
@@ -1541,26 +1539,26 @@ public:
 
     patterns.insert<GetVeqSizeOpRewrite, MxToMz, MyToMz, ReturnBitRewrite>(
         context);
-    patterns
-        .insert<AllocaOpRewrite, AllocaOpPattern, CallableClosureOpPattern,
-                CallableFuncOpPattern, CallCallableOpPattern, CastOpPattern,
-                ComputePtrOpPattern, ConcatOpRewrite, DeallocOpRewrite,
-                CreateStringLiteralOpPattern, ExtractQubitOpRewrite,
-                ExtractValueOpPattern, FuncToPtrOpPattern, InsertValueOpPattern,
-                InstantiateCallableOpPattern, LoadOpPattern, ExpPauliRewrite,
-                OneTargetRewrite<quake::HOp>, OneTargetRewrite<quake::XOp>,
-                OneTargetRewrite<quake::YOp>, OneTargetRewrite<quake::ZOp>,
-                OneTargetRewrite<quake::SOp>, OneTargetRewrite<quake::TOp>,
-                OneTargetOneParamRewrite<quake::R1Op>,
-                OneTargetTwoParamRewrite<quake::PhasedRxOp>,
-                OneTargetOneParamRewrite<quake::RxOp>,
-                OneTargetOneParamRewrite<quake::RyOp>,
-                OneTargetOneParamRewrite<quake::RzOp>,
-                OneTargetTwoParamRewrite<quake::U2Op>,
-                OneTargetTwoParamRewrite<quake::U3Op>, ResetRewrite,
-                StdvecDataOpPattern, StdvecInitOpPattern, StdvecSizeOpPattern,
-                StoreOpPattern, SubveqOpRewrite,
-                TwoTargetRewrite<quake::SwapOp>, UndefOpPattern>(typeConverter);
+    patterns.insert<
+        AllocaOpRewrite, AllocaOpPattern, CallableClosureOpPattern,
+        CallableFuncOpPattern, CallCallableOpPattern, CastOpPattern,
+        ComputePtrOpPattern, ConcatOpRewrite, DeallocOpRewrite,
+        CreateStringLiteralOpPattern, DiscriminateOpPattern,
+        ExtractQubitOpRewrite, ExtractValueOpPattern, FuncToPtrOpPattern,
+        InsertValueOpPattern, InstantiateCallableOpPattern, LoadOpPattern,
+        ExpPauliRewrite, OneTargetRewrite<quake::HOp>,
+        OneTargetRewrite<quake::XOp>, OneTargetRewrite<quake::YOp>,
+        OneTargetRewrite<quake::ZOp>, OneTargetRewrite<quake::SOp>,
+        OneTargetRewrite<quake::TOp>, OneTargetOneParamRewrite<quake::R1Op>,
+        OneTargetTwoParamRewrite<quake::PhasedRxOp>,
+        OneTargetOneParamRewrite<quake::RxOp>,
+        OneTargetOneParamRewrite<quake::RyOp>,
+        OneTargetOneParamRewrite<quake::RzOp>,
+        OneTargetTwoParamRewrite<quake::U2Op>,
+        OneTargetTwoParamRewrite<quake::U3Op>, ResetRewrite,
+        StdvecDataOpPattern, StdvecInitOpPattern, StdvecSizeOpPattern,
+        StoreOpPattern, SubveqOpRewrite, TwoTargetRewrite<quake::SwapOp>,
+        UndefOpPattern>(typeConverter);
     patterns.insert<MeasureRewrite<quake::MzOp>>(typeConverter, measureCounter);
 
     target.addLegalDialect<LLVM::LLVMDialect>();
@@ -1582,6 +1580,9 @@ public:
     });
     typeConverter.addConversion([](cudaq::cc::StdvecType type) {
       return cudaq::opt::factory::stdVectorImplType(type.getElementType());
+    });
+    typeConverter.addConversion([](quake::MeasureType type) {
+      return IntegerType::get(type.getContext(), 1);
     });
     typeConverter.addConversion([&typeConverter](cudaq::cc::PointerType type) {
       auto eleTy = type.getElementType();

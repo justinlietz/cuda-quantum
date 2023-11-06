@@ -596,29 +596,29 @@ static LogicalResult verifyMeasurements(Operation *const op,
       (targetsType.size() == 1 && targetsType[0].isa<quake::VeqType>());
   if (mustBeStdvec) {
     if (!op->getResult(0).getType().isa<cudaq::cc::StdvecType>())
-      return op->emitOpError("must return `!cc.stdvec<i1>`, when measuring a "
-                             "qreg, a series of qubits, or both");
+      return op->emitOpError("must return `!cc.stdvec<!quake.measure>`, when "
+                             "measuring a qreg, a series of qubits, or both");
   } else {
-    if (!op->getResult(0).getType().isa<IntegerType>())
+    if (!op->getResult(0).getType().isa<quake::MeasureType>())
       return op->emitOpError(
-          "must return `i1` when measuring exactly one qubit");
+          "must return `!quake.measure` when measuring exactly one qubit");
   }
   return success();
 }
 
 LogicalResult quake::MxOp::verify() {
   return verifyMeasurements(getOperation(), getTargets().getType(),
-                            getBits().getType());
+                            getMeasOut().getType());
 }
 
 LogicalResult quake::MyOp::verify() {
   return verifyMeasurements(getOperation(), getTargets().getType(),
-                            getBits().getType());
+                            getMeasOut().getType());
 }
 
 LogicalResult quake::MzOp::verify() {
   return verifyMeasurements(getOperation(), getTargets().getType(),
-                            getBits().getType());
+                            getMeasOut().getType());
 }
 
 //===----------------------------------------------------------------------===//
