@@ -1,0 +1,38 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+[project]
+name = "cudaq-edems"
+version = "0.0.0.dev0"
+description = "GF2 and extended detector error model library scaffolding for CUDA-Q."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{name = "NVIDIA Corporation & Affiliates"}]
+
+[build-system]
+requires = ["scikit-build-core==0.12.2", "nanobind>=2.4,<3"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.build-type = "Release"
+# CMake installs both Python packages and the native libraries into this wheel.
+wheel.packages = []
+wheel.install-dir = "cudaq/edems"
+install.components = ["EdemsNative", "EdemsPython"]
+# Tracked library sources are included by default. Forcing entire directories
+# into the archive would override exclusions for nested build artifacts.
+sdist.include = ["/CMakeLists.txt", "/README.md", "/LICENSE", "/NOTICE"]
+sdist.exclude = ["/logical/**", "**/build/**", "**/dist/**"]
+
+[tool.scikit-build.cmake.define]
+CUDAQ_EDEMS_BUILD_PYTHON = "ON"
+CMAKE_INSTALL_LIBDIR = "lib"
+CMAKE_INSTALL_INCLUDEDIR = "include"

@@ -1,0 +1,132 @@
+# ============================================================================ #
+# Copyright (c) 2026 NVIDIA Corporation & Affiliates.                          #
+# All rights reserved.                                                         #
+#                                                                              #
+# This source code and the accompanying materials are made available under     #
+# the terms of the Apache License 2.0 which accompanies this distribution.     #
+# ============================================================================ #
+
+name: Build GF2 and EDEM scaffolding
+
+on:
+  push:
+    branches:
+      - "pull-request/[0-9]+"
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      edems: ${{ steps.filter.outputs.matched }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check changed paths
+        id: filter
+        uses: ./.github/actions/check-changed-paths
+        with:
+          paths: |
+            preview/gf2/
+            preview/edems/
+            preview/CMakeLists.txt
+            preview/pyproject.toml
+            preview/README.md
+            preview/LICENSE
+            preview/NOTICE
+            scripts/build_cudaq.sh
+            .github/workflows/cudaq_edems.yml
+            .github/actions/check-changed-paths/
+
+  scaffold:
+    needs: changes
+    if: needs.changes.outputs.edems == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+        python: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # No submodules or CUDA-Q/LLVM installation: this exercises the
+      # dependency boundary.
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install build tools
+        run: python -m pip install build "cmake>=3.30" ninja
+
+      - name: Build GF2 independently
+        run: |
+          cmake -S preview/gf2 -B build/gf2 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/build/native-install"
+          cmake --build build/gf2 --parallel 2 --target install
+
+      - name: Build EDEM against installed GF2
+        run: |
+          cmake -S preview/edems -B build/edems -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/build/native-install" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/build/native-install"
+          cmake --build build/edems --parallel 2 --target install
+
+      - name: Exercise relocated CMake packages
+        run: |
+          mv build/native-install build/relocated-install
+          cmake -S preview/edems/tests/consumer -B build/consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$PWD/build/relocated-install"
+          cmake --build build/consumer --parallel 2
+          build/consumer/scaffold-consumer
+
+      - name: Build sdist and wheel
+        run: |
+          # Standalone builds may leave artifacts inside either source tree.
+          mkdir -p preview/gf2/build preview/edems/dist
+          touch preview/gf2/build/generated.txt preview/edems/dist/generated.txt
+          python -m build preview --outdir dist/edems
+          python preview/edems/tests/check_sdist.py dist/edems/*.tar.gz
+
+      - name: Exercise wheel in a fresh environment
+        run: |
+          python -m venv build/wheel-smoke
+          build/wheel-smoke/bin/python -m pip install --no-deps dist/edems/*.whl
+          smoke_python="$PWD/build/wheel-smoke/bin/python"
+          cd "$RUNNER_TEMP"
+          "$smoke_python" "$GITHUB_WORKSPACE/preview/edems/tests/smoke.py"
+
+      - name: Exercise C and C++ interfaces from the pip-installed libraries
+        run: |
+          wheel_python="$PWD/build/wheel-smoke/bin/python"
+          edems_install_prefix="$("$wheel_python" -c \
+            'from cudaq.edems import get_install_prefix; print(get_install_prefix())')"
+          cmake -S preview/edems/tests/c-consumer -B build/wheel-c-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$edems_install_prefix"
+          cmake --build build/wheel-c-consumer --parallel 2
+          build/wheel-c-consumer/cabi-consumer
+          cmake -S preview/edems/tests/consumer -B build/wheel-cxx-consumer -G Ninja \
+            -DCMAKE_PREFIX_PATH="$edems_install_prefix"
+          cmake --build build/wheel-cxx-consumer --parallel 2
+          build/wheel-cxx-consumer/scaffold-consumer
+
+      - name: Upload scaffold distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: cudaq-edems-${{ matrix.os }}-py${{ matrix.python }}
+          path: dist/edems/*
+          if-no-files-found: error

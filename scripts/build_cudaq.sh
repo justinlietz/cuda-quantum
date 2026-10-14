@@ -34,6 +34,7 @@
 # -p: Install prerequisites before building.
 # -I: Install only (skip configure and build, just run ninja install + post-install).
 # -L: Also build cudaq.logical (preview/logical) against the fresh CUDA-Q installation.
+# -E: Also build GF2/EDEM libraries and Python bindings (preview) into the installation.
 # --: Arguments after -- are passed directly to cmake (e.g., -DVAR=value).
 # 
 # Prerequisites:
@@ -66,6 +67,7 @@ install_prereqs=false
 install_toolchain=""
 install_only=false
 build_logical=false
+build_edems=false
 num_jobs=""
 enable_sanitizers=false
 extra_cmake_args=""
@@ -95,7 +97,7 @@ source "$this_file_dir/set_env_defaults.sh"
 
 __optind__=$OPTIND
 OPTIND=1
-while getopts ":c:t:j:vB:ispIL" opt; do
+while getopts ":c:t:j:vB:ispILE" opt; do
   case $opt in
     c) build_configuration="$OPTARG"
     ;;
@@ -116,6 +118,8 @@ while getopts ":c:t:j:vB:ispIL" opt; do
     I) install_only=true
     ;;
     L) build_logical=true
+    ;;
+    E) build_edems=true
     ;;
     \?) echo "Invalid command line option -$OPTARG" >&2
     (return 0 2>/dev/null) && return 1 || exit 1
@@ -415,6 +419,56 @@ if $build_logical; then
     cd "$working_dir" && (return 0 2>/dev/null) && return 1 || exit 1
   fi
   echo "Installed cudaq.logical into $CUDAQ_INSTALL_PREFIX (build tree: $logical_build_dir)"
+fi
+
+# GF2/EDEM are independent C++ projects; this flag only adds them to the
+# development installation. They can also be built directly without CUDA-Q.
+if $build_edems; then
+  # We are already inside the main build directory, including for a relative -B.
+  edems_build_dir="$PWD/preview/edems"
+  edems_cmake_args=(
+    -G Ninja -S "$repo_root/preview" -B "$edems_build_dir"
+    "-DCMAKE_BUILD_TYPE=$build_configuration"
+    "-DCMAKE_INSTALL_PREFIX=$CUDAQ_INSTALL_PREFIX"
+    -DCUDAQ_EDEMS_BUILD_PYTHON=ON
+    "-Dnanobind_DIR=$NANOBIND_INSTALL_PREFIX/nanobind/cmake"
+  )
+  echo "Building GF2/EDEM into $CUDAQ_INSTALL_PREFIX..."
+  if $verbose; then
+    cmake "${edems_cmake_args[@]}"
+    status=$?
+  else
+    echo "The progress of the GF2/EDEM CMake configuration is being logged to $logs_dir/edems_cmake_output.txt."
+    cmake "${edems_cmake_args[@]}" \
+      > "$logs_dir/edems_cmake_output.txt" 2> "$logs_dir/edems_cmake_error.txt"
+    status=$?
+  fi
+  if [ "$status" -ne 0 ]; then
+    echo "Error: GF2/EDEM CMake configuration failed." >&2
+    if ! $verbose; then
+      cat "$logs_dir/edems_cmake_error.txt" >&2
+    fi
+    cd "$working_dir"
+    (return 0 2>/dev/null) && return 1 || exit 1
+  fi
+  if $verbose; then
+    ninja -C "$edems_build_dir" ${num_jobs} install
+    status=$?
+  else
+    echo "The progress of the GF2/EDEM build is being logged to $logs_dir/edems_ninja_output.txt."
+    ninja -C "$edems_build_dir" ${num_jobs} install \
+      > "$logs_dir/edems_ninja_output.txt" 2> "$logs_dir/edems_ninja_error.txt"
+    status=$?
+  fi
+  if [ "$status" -ne 0 ]; then
+    echo "Error: Failed to build/install GF2/EDEM." >&2
+    if ! $verbose; then
+      cat "$logs_dir/edems_ninja_output.txt" "$logs_dir/edems_ninja_error.txt" >&2
+    fi
+    cd "$working_dir"
+    (return 0 2>/dev/null) && return 1 || exit 1
+  fi
+  echo "Installed GF2/EDEM (build tree: $edems_build_dir)"
 fi
 
 cd "$working_dir" && echo "Installed CUDA-Q in directory: $CUDAQ_INSTALL_PREFIX"
