@@ -45,12 +45,18 @@ class GateSet:
             raise ValueError(
                 "a gate set requires actions and legalization passes")
 
-    def pipeline(self, *, precision: float = 1.0e-10, synthesizer="gridsynth"):
+    def pipeline(self,
+                 *,
+                 precision: float = 1.0e-10,
+                 synthesizer="gridsynth",
+                 merge_single_qubit: bool = True):
         """Return the P0-to-P0 pipeline required by this gate set."""
 
         from .pipeline import PassSpec, Pipeline
         from .synthesizers import _ensure_registered, _synthesizer_label
 
+        if not isinstance(merge_single_qubit, bool):
+            raise TypeError("merge_single_qubit must be a bool")
         precision = _validate_precision(precision)
         synthesizer = _ensure_registered(synthesizer)
         passes = []
@@ -65,6 +71,8 @@ class GateSet:
                     options += (("synthesizer", synthesizer),
                                 ("synthesizer_producer",
                                  _synthesizer_label(synthesizer)))
+                if not merge_single_qubit:
+                    options += (("merge_single_qubit", False),)
             passes.append(PassSpec(name, options))
         return Pipeline(tuple(passes), output_profile="p0")
 
@@ -94,7 +102,9 @@ def _match_pipeline(pipeline):
         precision = _validate_precision(options.get("precision"))
         synthesizer = options.get("synthesizer", "gridsynth")
         if pipeline != gate_set.pipeline(precision=precision,
-                                         synthesizer=synthesizer):
+                                         synthesizer=synthesizer,
+                                         merge_single_qubit=options.get(
+                                             "merge_single_qubit", True)):
             continue
         return gate_set, precision, synthesizer
     return None

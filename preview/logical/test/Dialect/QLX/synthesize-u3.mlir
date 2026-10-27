@@ -3,6 +3,7 @@
 
 // REQUIRES: qlx-opt
 // RUN: qlx-opt -split-input-file %s --qlx-synthesize-rotations --qlx-verify-clifford-t | FileCheck %s
+// RUN: qlx-opt -split-input-file %s --qlx-synthesize-rotations="merge-single-qubit=false" --qlx-verify-clifford-t | FileCheck %s
 
 func.func @exact_h(%q: !qlx.logical_qubit) -> !qlx.logical_qubit {
   %theta = arith.constant 1.5707963267948966 : f64

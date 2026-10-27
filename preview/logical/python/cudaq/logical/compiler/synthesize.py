@@ -18,8 +18,9 @@ def _pass_pipeline_string(pass_spec, gate_set: GateSet) -> str:
     options = dict(pass_spec.options)
     if pass_spec.name == "qlx-synthesize-rotations":
         synthesizer = options.get("synthesizer", "gridsynth")
+        merge = "true" if options.get("merge_single_qubit", True) else "false"
         return (f"qlx-synthesize-rotations{{precision={options['precision']!r} "
-                f"synthesizer={synthesizer}}}")
+                f"synthesizer={synthesizer} merge-single-qubit={merge}}}")
     if pass_spec.name == "qlx-verify-clifford-t":
         return pass_spec.name
     raise ValueError(f"gate set {gate_set.name!r} requires unsupported "
@@ -77,6 +78,7 @@ def _synthesize(
     gate_set: GateSet,
     precision: float,
     synthesizer=None,
+    merge_single_qubit=True,
     parameters=None,
     pipeline=None,
     experiment=None,
@@ -84,8 +86,10 @@ def _synthesize(
     if not isinstance(gate_set, GateSet):
         raise TypeError(
             "synthesize gate_set= must be a cudaq.logical compiler GateSet")
-    pipeline = pipeline or gate_set.pipeline(precision=precision,
-                                             synthesizer=synthesizer)
+    pipeline = pipeline or gate_set.pipeline(
+        precision=precision,
+        synthesizer=synthesizer,
+        merge_single_qubit=merge_single_qubit)
 
     if isinstance(definition, Build):
         if definition.profile != "p0":
@@ -147,6 +151,7 @@ def synthesize(
     gate_set: GateSet,
     precision: float = 1.0e-10,
     synthesizer=None,
+    merge_single_qubit: bool = True,
     parameters=None,
 ) -> Build:
     """Legalize a logical program to ``gate_set`` without selecting a device.
@@ -156,16 +161,20 @@ def synthesize(
     takes precedence. Runtime-dependent angles must be specialized through
     ``parameters=``. ``synthesizer`` may supply a Python ``rz`` method and an
     optional whole-``u3`` method; returned words are independently verified.
+    With a ``u3`` method, ``merge_single_qubit`` merges single-qubit runs.
     """
 
     if not isinstance(gate_set, GateSet):
         raise TypeError("synthesize gate_set= must be a cudaq.logical.GateSet")
-    pipeline = gate_set.pipeline(precision=precision, synthesizer=synthesizer)
+    pipeline = gate_set.pipeline(precision=precision,
+                                 synthesizer=synthesizer,
+                                 merge_single_qubit=merge_single_qubit)
     return _synthesize(
         definition,
         gate_set=gate_set,
         precision=precision,
         synthesizer=synthesizer,
+        merge_single_qubit=merge_single_qubit,
         parameters=parameters,
         pipeline=pipeline,
     )

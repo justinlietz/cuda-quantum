@@ -18,10 +18,12 @@ namespace qlx {
 /// are decomposed exactly; static Pauli-product rotations use basis changes, a
 /// parity ladder, and the native Ross-Selinger synthesizer. Each rotation uses
 /// its authored `precision` when present, falling back to the call-wide
-/// precision. Dynamic rotations fail closed.
+/// precision. Dynamic rotations fail closed. With `mergeSingleQubit`, a
+/// u3-capable synthesizer receives each single-qubit run as one u3.
 mlir::LogicalResult
 synthesizeRotations(mlir::ModuleOp module, double precision,
-                    llvm::StringRef synthesizer = "gridsynth");
+                    llvm::StringRef synthesizer = "gridsynth",
+                    bool mergeSingleQubit = true);
 
 /// Verify that every remaining `qlx.apply` is in the positive H/S/T/CX basis
 /// (or is the semantic no-op `idle`). Emits an operation diagnostic on failure.

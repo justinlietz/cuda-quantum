@@ -241,16 +241,23 @@ class CliffordTBackend(Backend):
 
     _trace_tag = "clifford_t"
 
-    def __init__(self, *, precision=1.0e-4, synthesizer=None, next_backend):
+    def __init__(self,
+                 *,
+                 precision=1.0e-4,
+                 synthesizer=None,
+                 merge_single_qubit=True,
+                 next_backend):
         # Let the gate-set own precision validation so this backend and the
         # public ``cudaq.logical.compiler.synthesize`` entry point have identical rules.
         from ..compiler.gate_sets import clifford_t
 
         self.synthesizer = synthesizer
+        self.merge_single_qubit = merge_single_qubit
         self.precision = dict(
-            clifford_t.pipeline(
-                precision=precision,
-                synthesizer=synthesizer).passes[0].options)["precision"]
+            clifford_t.pipeline(precision=precision,
+                                synthesizer=synthesizer,
+                                merge_single_qubit=merge_single_qubit).
+            passes[0].options)["precision"]
         super().__init__(LoweringSpec((),
                                       None,
                                       accepted_stages=("p0",),
@@ -272,7 +279,8 @@ class CliffordTBackend(Backend):
         return synthesize(build,
                           gate_set=clifford_t,
                           precision=self.precision,
-                          synthesizer=self.synthesizer)
+                          synthesizer=self.synthesizer,
+                          merge_single_qubit=self.merge_single_qubit)
 
     def stack_metadata(self):
         entries = (("gate set", "H/S/T/CX"), ("precision",
@@ -951,7 +959,10 @@ estimator = Target.from_backend(
 )
 
 
-def clifford_t_target(*, precision=1.0e-4, synthesizer=None):
+def clifford_t_target(*,
+                      precision=1.0e-4,
+                      synthesizer=None,
+                      merge_single_qubit=True):
     """Build an estimation-only target that first legalizes to Clifford+T."""
 
     return Target.from_backend(
@@ -959,6 +970,7 @@ def clifford_t_target(*, precision=1.0e-4, synthesizer=None):
         ProgramBackend(
             next_backend=CliffordTBackend(precision=precision,
                                           synthesizer=synthesizer,
+                                          merge_single_qubit=merge_single_qubit,
                                           next_backend=TerminalBackend())),
     )
 

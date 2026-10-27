@@ -54,7 +54,8 @@ def QLXSynthesizeRotations
     Y are conjugated into the Z basis first. A rotation's authored
     `precision` attribute, when present, overrides this pass's `precision`
     option. Rotations with a runtime-dependent (non-static) angle are
-    rejected rather than approximated.
+    rejected rather than approximated. If the synthesizer accepts whole u3
+    targets, single-qubit runs are first merged into one u3.
   }];
   let options = [
     Option<"precision", "precision", "double",
@@ -62,7 +63,11 @@ def QLXSynthesizeRotations
            "Default off-lattice rotation synthesis precision; must be "
            "finite and in (0, 1)">,
     Option<"synthesizer", "synthesizer", "std::string",
-           /*default=*/"\"gridsynth\"", "Registered rotation synthesizer">
+           /*default=*/"\"gridsynth\"", "Registered rotation synthesizer">,
+    Option<"mergeSingleQubit", "merge-single-qubit", "bool",
+           /*default=*/"true",
+           "Merge single-qubit runs into one u3 when the synthesizer "
+           "supports whole-u3 synthesis">
   ];
   let dependentDialects = ["::mlir::arith::ArithDialect"];
 }
