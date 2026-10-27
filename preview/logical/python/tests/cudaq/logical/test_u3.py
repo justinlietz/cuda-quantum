@@ -314,3 +314,40 @@ def test_invalid_angles_fail_authoring(angle):
 
     with pytest.raises(TypeError, match="u3 angles must be finite"):
         cql.compile(circuit)
+
+
+@cql.program
+def single_qubit_run() -> bool:
+    q = cql.rz(cql.prepare_zero(), 0.1234)
+    q = cql.h(q)
+    q = cql.rz(q, 0.2345)
+    q = cql.t(q)
+    return cql.measure_z(q)
+
+
+def test_single_qubit_run_merges_into_one_u3(synthesizer_factory):
+    synth = synthesizer_factory(direct=True)
+    build = cql.compiler.synthesize(single_qubit_run,
+                                    gate_set=cql.compiler.clifford_t,
+                                    precision=1e-6,
+                                    synthesizer=synth)
+    assert [call[0] for call in synth.calls] == ["u3"]
+
+    def rz(angle):
+        return np.diag([np.exp(-0.5j * angle), np.exp(0.5j * angle)])
+
+    h = np.array([[1, 1], [1, -1]]) / math.sqrt(2)
+    t = np.diag([1, np.exp(1j * math.pi / 4)])
+    target, actual = t @ rz(0.2345) @ h @ rz(0.1234), _unitary(build)
+    phase = np.angle(np.trace(target.conj().T @ actual))
+    assert np.linalg.norm(actual - np.exp(1j * phase) * target, ord=2) <= 1e-6
+
+
+def test_merge_single_qubit_false_keeps_rz_calls(synthesizer_factory):
+    synth = synthesizer_factory(direct=True)
+    cql.compile(
+        single_qubit_run,
+        pipeline=cql.compiler.pipelines.clifford_t(precision=1e-6,
+                                                   synthesizer=synth,
+                                                   merge_single_qubit=False))
+    assert [call[0] for call in synth.calls] == ["rz", "rz"]

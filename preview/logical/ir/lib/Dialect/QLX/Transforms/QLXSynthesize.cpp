@@ -13,12 +13,15 @@
 #include "qlx/Dialect/QLX/Transforms/Passes.h"
 #include "qlx/Dialect/QLX/Transforms/RotationSynthesizer.h"
 #include "cudaq/Synthesis/Math/Real.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Builders.h"
 
 #include <array>
+#include <cfloat>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -682,6 +685,210 @@ static LogicalResult synthesizeU3Actions(ModuleOp module,
   return success();
 }
 
+using Mat2 = std::array<std::complex<double>, 4>;
+
+/// Row-major 2x2 product `left * right`.
+static Mat2 multiply(const Mat2 &left, const Mat2 &right) {
+  return Mat2{left[0] * right[0] + left[1] * right[2],
+              left[0] * right[1] + left[1] * right[3],
+              left[2] * right[0] + left[3] * right[2],
+              left[2] * right[1] + left[3] * right[3]};
+}
+
+/// exp(-i angle P / 2) for the Pauli `basis` in {X, Y, Z}.
+static Mat2 pauliRotationUnitary(char basis, double angle) {
+  const std::complex<double> i(0.0, 1.0);
+  double c = std::cos(angle / 2), s = std::sin(angle / 2);
+  switch (basis) {
+  case 'X':
+    return Mat2{c, -i * s, -i * s, c};
+  case 'Y':
+    return Mat2{c, -s, s, c};
+  default:
+    return Mat2{std::exp(-i * (angle / 2)), 0.0, 0.0,
+                std::exp(i * (angle / 2))};
+  }
+}
+
+/// The u3 convention of this pass: Rz(phi) Ry(theta) Rz(lambda).
+static Mat2 u3Unitary(double theta, double phi, double lambda) {
+  return multiply(pauliRotationUnitary('Z', phi),
+                  multiply(pauliRotationUnitary('Y', theta),
+                           pauliRotationUnitary('Z', lambda)));
+}
+
+static std::optional<Mat2> cliffordTUnitary(BuiltinAction action) {
+  switch (action) {
+  case BuiltinAction::h:
+    return Mat2{M_SQRT1_2, M_SQRT1_2, M_SQRT1_2, -M_SQRT1_2};
+  case BuiltinAction::s:
+    return Mat2{1.0, 0.0, 0.0, std::complex<double>(0.0, 1.0)};
+  case BuiltinAction::t:
+    return Mat2{1.0, 0.0, 0.0, std::polar(1.0, M_PI / 4)};
+  default:
+    return std::nullopt;
+  }
+}
+
+/// Inverse of u3Unitary, up to global phase.
+static std::array<double, 3> zyzAngles(const Mat2 &unitary) {
+  std::complex<double> root =
+      std::sqrt(unitary[0] * unitary[3] - unitary[1] * unitary[2]);
+  std::complex<double> diagonal = unitary[0] / root, lower = unitary[2] / root;
+  double theta = 2.0 * std::atan2(std::abs(lower), std::abs(diagonal));
+  double sum = -2.0 * std::arg(diagonal), difference = 2.0 * std::arg(lower);
+  return {theta, (sum + difference) / 2.0, (sum - difference) / 2.0};
+}
+
+struct RunMember {
+  Mat2 unitary;
+  std::optional<double> precision;
+  bool offLattice = false;
+};
+
+/// Anything unrecognized (dynamic, malformed, or exact rational-pi intent)
+/// ends a run and is left to the existing legalization.
+static std::optional<RunMember> runMember(ApplyOp operation,
+                                          double defaultPrecision) {
+  auto builtin = dyn_cast<BuiltinActionAttr>(operation.getActionAttr());
+  if (!builtin || operation.getNumResults() != 1 ||
+      operation.getInputs().empty())
+    return std::nullopt;
+  if (auto unitary = cliffordTUnitary(builtin.getValue()))
+    return RunMember{*unitary, std::nullopt, false};
+
+  auto parameters = operation.getParameters().value_or(DictionaryAttr{});
+  auto integer = [&](StringRef name) {
+    return parameters ? dyn_cast_or_null<IntegerAttr>(parameters.get(name))
+                      : IntegerAttr{};
+  };
+  double precision = defaultPrecision;
+  if (parameters)
+    if (Attribute attr = parameters.get("precision")) {
+      auto authored = dyn_cast<FloatAttr>(attr);
+      if (!authored || !authored.getType().isF64())
+        return std::nullopt;
+      precision = authored.getValueAsDouble();
+    }
+  if (!std::isfinite(precision) || precision <= 0.0 || precision >= 1.0)
+    return std::nullopt;
+
+  switch (builtin.getValue()) {
+  case BuiltinAction::pauli_rotation: {
+    auto xMask = integer("x_mask"), zMask = integer("z_mask");
+    auto signAttr = integer("sign");
+    int64_t sign = signAttr ? signAttr.getInt() : 1;
+    auto magnitude = constantAngle(operation.getInputs().back());
+    if (operation.getInputs().size() != 2 || !xMask || !zMask ||
+        xMask.getInt() < 0 || xMask.getInt() > 1 || zMask.getInt() < 0 ||
+        zMask.getInt() > 1 || xMask.getInt() + zMask.getInt() == 0 ||
+        (sign != 1 && sign != -1) || failed(magnitude) ||
+        !std::isfinite(*magnitude) || *magnitude < 0.0)
+      return std::nullopt;
+    bool exactLattice = signedExactQuarterTurns(operation).has_value();
+    if (!exactLattice && integer("angle_pi_numer"))
+      return std::nullopt;
+    double angle = static_cast<double>(sign) * *magnitude;
+    char basis = xMask.getInt() ? (zMask.getInt() ? 'Y' : 'X') : 'Z';
+    bool onLattice =
+        exactLattice || approximateQuarterTurns(angle, precision).has_value();
+    return RunMember{pauliRotationUnitary(basis, angle), precision, !onLattice};
+  }
+  case BuiltinAction::u3: {
+    if (operation.getInputs().size() != 4)
+      return std::nullopt;
+    std::array<double, 3> angles;
+    bool onLattice = true;
+    const char *names[] = {"theta", "phi", "lambda"};
+    for (unsigned index = 0; index < 3; ++index) {
+      std::string prefix = std::string(names[index]) + "_pi_";
+      if (parameters && (parameters.get(prefix + "numer") ||
+                         parameters.get(prefix + "denom")))
+        return std::nullopt;
+      auto angle = constantAngle(operation.getInputs()[index + 1]);
+      if (failed(angle) || !std::isfinite(*angle))
+        return std::nullopt;
+      angles[index] = *angle;
+      onLattice = onLattice &&
+                  approximateQuarterTurns(*angle, precision / 3).has_value();
+    }
+    return RunMember{u3Unitary(angles[0], angles[1], angles[2]), precision,
+                     !onLattice};
+  }
+  default:
+    return std::nullopt;
+  }
+}
+
+/// Fuse each single-qubit chain containing an off-lattice rotation into one u3
+/// at the tightest member precision, less f64 rounding slack.
+static void mergeSingleQubitRuns(ModuleOp module, double defaultPrecision) {
+  llvm::MapVector<Operation *, RunMember> members;
+  module.walk([&](ApplyOp operation) {
+    if (auto member = runMember(operation, defaultPrecision))
+      members.insert({operation.getOperation(), std::move(*member)});
+  });
+  auto successor = [&](ApplyOp operation) -> ApplyOp {
+    Value result = operation.getResult(0);
+    if (!result.hasOneUse())
+      return {};
+    auto user = dyn_cast<ApplyOp>(*result.getUsers().begin());
+    if (!user || user->getBlock() != operation->getBlock() ||
+        !members.count(user.getOperation()) ||
+        user.getInputs().front() != result)
+      return {};
+    return user;
+  };
+
+  SmallVector<SmallVector<ApplyOp>> runs;
+  for (auto &entry : members) {
+    auto operation = cast<ApplyOp>(entry.first);
+    auto producer = operation.getInputs().front().getDefiningOp<ApplyOp>();
+    if (producer && members.count(producer.getOperation()) &&
+        successor(producer) == operation)
+      continue;
+    SmallVector<ApplyOp> run{operation};
+    while (ApplyOp next = successor(run.back()))
+      run.push_back(next);
+    if (run.size() > 1)
+      runs.push_back(std::move(run));
+  }
+
+  for (auto &run : runs) {
+    Mat2 product{1.0, 0.0, 0.0, 1.0};
+    double precision = 1.0;
+    bool offLattice = false;
+    for (ApplyOp operation : run) {
+      const RunMember &member = members.find(operation.getOperation())->second;
+      product = multiply(member.unitary, product);
+      if (member.precision)
+        precision = std::min(precision, *member.precision);
+      offLattice = offLattice || member.offLattice;
+    }
+    double slack = 64.0 * run.size() * DBL_EPSILON;
+    if (!offLattice || precision < 1.0e4 * run.size() * DBL_EPSILON)
+      continue;
+
+    std::array<double, 3> angles = zyzAngles(product);
+    ApplyOp last = run.back();
+    OpBuilder builder(last);
+    SmallVector<Value, 4> inputs{run.front().getInputs().front()};
+    for (double angle : angles)
+      inputs.push_back(arith::ConstantOp::create(builder, last.getLoc(),
+                                                 builder.getF64FloatAttr(angle))
+                           .getResult());
+    NamedAttrList attrs;
+    attrs.set("precision", builder.getF64FloatAttr(precision - slack));
+    auto merged = ApplyOp::create(
+        builder, last.getLoc(), TypeRange{inputs.front().getType()},
+        BuiltinActionAttr::get(builder.getContext(), BuiltinAction::u3),
+        ValueRange(inputs), builder.getDictionaryAttr(attrs));
+    last.getResult(0).replaceAllUsesWith(merged.getResult(0));
+    for (ApplyOp operation : llvm::reverse(run))
+      operation.erase();
+  }
+}
+
 } // namespace
 
 LogicalResult qlx::verifyCliffordT(ModuleOp module) {
@@ -712,7 +919,8 @@ LogicalResult qlx::verifyCliffordT(ModuleOp module) {
 }
 
 LogicalResult qlx::synthesizeRotations(ModuleOp module, double precision,
-                                       StringRef synthesizerName) {
+                                       StringRef synthesizerName,
+                                       bool mergeSingleQubit) {
   if (!std::isfinite(precision) || precision <= 0.0 || precision >= 1.0)
     return module.emitError(
         "default synthesis precision must be finite and in (0, 1)");
@@ -726,6 +934,8 @@ LogicalResult qlx::synthesizeRotations(ModuleOp module, double precision,
 
   if (failed(legalizeFiniteActions(module)))
     return failure();
+  if (mergeSingleQubit && synthesizer->supportsU3())
+    mergeSingleQubitRuns(module, precision);
   if (failed(synthesizeU3Actions(module, *synthesizer, precision, cache)))
     return failure();
   if (failed(synthesizePauliRotations(module, precision, *synthesizer, cache)))
@@ -739,8 +949,8 @@ struct QLXSynthesizeRotationsPass
     : public qlx::impl::QLXSynthesizeRotationsBase<QLXSynthesizeRotationsPass> {
   using QLXSynthesizeRotationsBase::QLXSynthesizeRotationsBase;
   void runOnOperation() override {
-    if (failed(
-            qlx::synthesizeRotations(getOperation(), precision, synthesizer)))
+    if (failed(qlx::synthesizeRotations(getOperation(), precision, synthesizer,
+                                        mergeSingleQubit)))
       signalPassFailure();
   }
 };
