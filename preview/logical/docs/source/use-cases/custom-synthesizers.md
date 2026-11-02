@@ -117,9 +117,9 @@ Exact Clifford U3 actions use a shortest positive H/S word, so
 `u3(π/2, 0, π)` emits a single H and no T.
 
 This prototype supports U3 only in P0 programs. Synthesize before placement;
-the device path reports an error for an unlegalized U3. Quake U3 import,
-single-qubit merging, probabilistic output, and repeat-until-success synthesis
-are future work.
+the device path reports an error for an unlegalized U3. Direct Quake U3 import,
+native P0 single-qubit merging, probabilistic output, and repeat-until-success
+synthesis are future work.
 
 Run `examples/standalone/06_custom_synthesizer.py` for a self-contained example.
 Its toy synthesizer delegates to CUDA-Q GridSynth and composes Euler rotations;
@@ -128,3 +128,32 @@ It measures each Rz word with `cudaq.synth.rz_error` and sums the three bounds
 for U3, whose basis-change Cliffords are exact. It asks GridSynth for half the
 callback precision to leave room for the independent verifier's numerical
 margin when `mpmath` is absent; the requested contract remains unchanged.
+
+## Fuse a CUDA-Q kernel before synthesis
+
+Run `examples/06_fusion_custom_synthesizer.py` to compose the existing CUDA-Q
+fusion pass with a user-provided Rz synthesizer. The example explicitly stages
+the compiler APIs; selecting a logical target does not currently insert this
+fusion pass automatically.
+
+The example specializes an ordinary `@cudaq.kernel`, clones its Quake module,
+and converts it to linear wire semantics. It then runs
+`fuse-1q-chains-for-clifford-t{epsilon=0}` followed by `canonicalize`, normalizes
+and lowers phase bookkeeping, and imports the resulting Quake with
+`cql.compiler.import_quake`. Finally, `cql.compiler.synthesize` invokes the
+selected Python plugin. The complete `cudaq-fault-tolerant-target` pipeline is
+not used because it would synthesize the rotations before the plugin sees them.
+
+The recording plugin delegates to native GridSynth so the comparison isolates
+the effect of fusion. The six original rotations become three, and the example
+reports the number of plugin calls and the resulting T count. A different Rz
+algorithm can replace the adapter without changing this pipeline. Whole-U3
+plugins still need a future bridge that preserves each fused unitary as P0 U3;
+the existing fusion pass emits Rx/Rz rotations.
+
+Both paths use the same whole-block error budget. Half is divided among the
+remaining rotations, leaving room for floating-point fusion drift. Each returned
+word is checked by the logical compiler, and the example additionally multiplies
+the complete H/S/T circuit and measures its projective operator-norm error
+against the original six-rotation unitary. This final check is numerical and
+specific to this small example; it is not a general compiler error certificate.

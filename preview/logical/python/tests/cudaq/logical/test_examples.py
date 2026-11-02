@@ -35,7 +35,7 @@ def reset_cudaq_target_after_test():
 def test_examples_execute(capsys, monkeypatch):
     import cudaq
 
-    assert len(KERNEL_EXAMPLES) == 7
+    assert len(KERNEL_EXAMPLES) == 8
     assert len(STANDALONE_EXAMPLES) == 9
     monkeypatch.syspath_prepend(str(EXAMPLE_ROOT))
     output = {}

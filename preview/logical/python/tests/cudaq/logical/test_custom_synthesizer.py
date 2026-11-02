@@ -355,9 +355,13 @@ _ensure_registered(Synth())
     assert "leaked" not in result.stderr
 
 
-def test_example_runs_without_optional_mpmath():
-    example = Path(__file__).resolve(
-    ).parents[4] / "examples/standalone/06_custom_synthesizer.py"
+@pytest.mark.parametrize("relative_path,expected_output", [
+    ("standalone/06_custom_synthesizer.py", "toy-su2/0.1.0"),
+    ("06_fusion_custom_synthesizer.py",
+     "Both results verified against the original kernel."),
+])
+def test_example_runs_without_optional_mpmath(relative_path, expected_output):
+    example = Path(__file__).resolve().parents[4] / "examples" / relative_path
     script = """
 import sys
 sys.modules['mpmath'] = None
@@ -373,7 +377,7 @@ runpy.run_path(sys.argv[1], run_name='__main__')
                             capture_output=True,
                             text=True)
     assert result.returncode == 0, result.stderr
-    assert "toy-su2/0.1.0" in result.stdout
+    assert expected_output in result.stdout
 
 
 @cudaq.kernel
