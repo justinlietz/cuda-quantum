@@ -2,9 +2,12 @@
 # Licensed under the Apache License, Version 2.0.
 """Fuse a CUDA-Q rotation chain before invoking a Python Rz synthesizer.
 
-This explicitly stages the existing Quake and logical compiler APIs. The toy
-plugin delegates to native GridSynth so that the comparison isolates fusion.
-Both paths are checked against the original unitary at the same error budget.
+CUDA-Q compiles every Logical import through a ``quake-unmapped`` stage with
+the ``t-count`` cost model. From optimization level 2 that stage fuses
+one-qubit chains, so the example selects fusion with the optimization level
+instead of running passes itself. The toy plugin delegates to native GridSynth
+so that the comparison isolates fusion. Both levels are checked against the
+original unitary at the same error budget.
 """
 
 import math
@@ -15,8 +18,6 @@ import numpy as np
 import cudaq
 import cudaq.logical as cql
 from cudaq.logical.compiler import CliffordTWord
-from cudaq.mlir import ir
-from cudaq.mlir.passmanager import PassManager
 
 
 @cudaq.kernel
@@ -59,48 +60,29 @@ class RecordingSynthesizer:
                              self.name, self.version)
 
 
-def rotation_count(quake):
-    return len(re.findall(r"\bquake\.r[xyz]\b", quake))
+def rotation_count(build):
+    """Count the P0 rotations that synthesis will hand to the plugin."""
+    return len(re.findall(r"#qlx\.action<pauli_rotation", build.to_mlir()))
 
 
-def synthesize_chain(*, fuse, synthesizer, precision=1e-6):
-    """Prepare Quake, optionally fuse, import P0, then call the selected plugin.
+def synthesize_chain(*, optimization_level, synthesizer, precision=1e-6):
+    """Import the kernel at ``optimization_level``, then call the plugin.
 
-    ``precision`` budgets this example's entire six-rotation block. Half is
-    shared among the remaining rotations; the rest leaves room for fusion
-    roundoff. The final numerical check measures against the original block.
-    This is separate from the compiler's per-rotation ``precision`` option.
+    Level 1 only cleans up, and level 2 also fuses one-qubit chains. The stage
+    keeps rotations in its basis, so CUDA-Q leaves their synthesis to the
+    plugin. ``precision`` budgets this example's entire six-rotation block.
+    Half is shared among the remaining rotations; the rest leaves room for
+    fusion roundoff. The final numerical check measures against the original
+    block. This is separate from the compiler's per-rotation ``precision``.
     """
-    # cudaq.synthesize specializes ordinary kernel arguments; it does not
-    # perform Clifford+T synthesis. Clone its IR to keep both paths independent.
-    source = cudaq.synthesize(rotation_chain).qkeModule
-    module = ir.Module.parse(str(source), context=source.context)
-    passes = [
-        "func.func(erase-implicit-output,add-dealloc)",
-        "expand-measurements",
-        "convert-to-linear-values",
-    ]
-    if fuse:
-        # epsilon=0 avoids tolerance-based classification of near-exact angles.
-        # The pass still composes gates numerically, so check its output below.
-        passes.append(
-            "func.func(fuse-1q-chains-for-clifford-t{epsilon=0},canonicalize)")
-    # The importer consumes scalar wires and does not accept quake.phase.
-    # This example has only uncontrolled gates, whose global phase is ignored.
-    passes.append(
-        "func.func(normalize-phase-placement,lower-phase,canonicalize)")
-    manager = PassManager.parse("builtin.module(" + ",".join(passes) + ")",
-                                context=module.context)
-    manager.run(module.operation)
-    quake = str(module)
-
-    p0 = cql.compiler.import_quake(quake, root=rotation_chain.name)
-    per_rotation = precision / (2 * rotation_count(quake))
+    p0 = cql.compiler.import_cudaq(rotation_chain,
+                                   optimization_level=optimization_level)
+    rotations = rotation_count(p0)
     build = cql.compiler.synthesize(p0,
                                     gate_set=cql.compiler.clifford_t,
-                                    precision=per_rotation,
+                                    precision=precision / (2 * rotations),
                                     synthesizer=synthesizer)
-    return build, quake
+    return build, rotations
 
 
 def original_unitary():
@@ -138,22 +120,21 @@ def main():
     precision = 1e-6
     results = {}
     print(f"Whole-block error budget: {precision:g}")
-    print("Path       rotations  plugin calls  T gates  measured block error")
-    for label, fuse in (("unfused", False), ("fused", True)):
+    print("Level  rotations  plugin calls  T gates  measured block error")
+    for level in (1, 2):
         plugin = RecordingSynthesizer()
-        build, quake = synthesize_chain(fuse=fuse,
-                                        synthesizer=plugin,
-                                        precision=precision)
+        build, rotations = synthesize_chain(optimization_level=level,
+                                            synthesizer=plugin,
+                                            precision=precision)
         error = block_error(build)
         assert error <= precision
         assert plugin.calls
         assert build.synthesis.synthesizer == "fusion-example/0.1.0"
-        results[label] = (rotation_count(quake), len(plugin.calls),
-                          build.synthesis.t_count)
-        rotations, calls, t_count = results[label]
-        print(f"{label:9}  {rotations:9}  {calls:12}  {t_count:7}  {error:.3e}")
-    assert results["fused"][0] < results["unfused"][0]
-    assert results["fused"][1] < results["unfused"][1]
+        results[level] = (rotations, len(plugin.calls), build.synthesis.t_count)
+        rotations, calls, t_count = results[level]
+        print(f"{level:5}  {rotations:9}  {calls:12}  {t_count:7}  {error:.3e}")
+    assert results[2][0] < results[1][0]
+    assert results[2][1] < results[1][1]
     print("Both results verified against the original kernel.")
 
 

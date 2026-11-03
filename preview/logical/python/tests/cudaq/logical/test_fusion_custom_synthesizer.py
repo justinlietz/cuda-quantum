@@ -25,12 +25,13 @@ def example():
 @pytest.mark.parametrize("precision", [1e-4, 1e-6])
 def test_fusion_precedes_external_synthesis(example, precision):
     results = []
-    for fuse, expected_rotations in ((False, 6), (True, 3)):
+    # Level 1 only cleans up; level 2 fuses the chain into one Euler triple.
+    for level, expected_rotations in ((1, 6), (2, 3)):
         plugin = example["RecordingSynthesizer"]()
-        build, quake = example["synthesize_chain"](fuse=fuse,
-                                                   synthesizer=plugin,
-                                                   precision=precision)
-        assert example["rotation_count"](quake) == expected_rotations
+        build, rotations = example["synthesize_chain"](optimization_level=level,
+                                                       synthesizer=plugin,
+                                                       precision=precision)
+        assert rotations == expected_rotations
         assert len(plugin.calls) == expected_rotations
         assert all(eps == precision / (2 * expected_rotations)
                    for _, eps in plugin.calls)
@@ -47,4 +48,4 @@ def test_fused_word_still_requires_independent_verification(example):
     plugin.rz = lambda angle, eps: cql.compiler.CliffordTWord(
         (), eps, 0.0, "incorrect-identity", plugin.name, plugin.version)
     with pytest.raises(RuntimeError, match="exceeds requested precision"):
-        example["synthesize_chain"](fuse=True, synthesizer=plugin)
+        example["synthesize_chain"](optimization_level=2, synthesizer=plugin)

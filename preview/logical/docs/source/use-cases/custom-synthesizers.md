@@ -131,18 +131,18 @@ margin when `mpmath` is absent; the requested contract remains unchanged.
 
 ## Fuse a CUDA-Q kernel before synthesis
 
-Run `examples/06_fusion_custom_synthesizer.py` to compose the existing CUDA-Q
-fusion pass with a user-provided Rz synthesizer. The example explicitly stages
-the compiler APIs; selecting a logical target does not currently insert this
-fusion pass automatically.
+Run `examples/06_fusion_custom_synthesizer.py` to compose CUDA-Q's one-qubit
+chain fusion with a user-provided Rz synthesizer.
 
-The example specializes an ordinary `@cudaq.kernel`, clones its Quake module,
-and converts it to linear wire semantics. It then runs
-`fuse-1q-chains-for-clifford-t{epsilon=0}` followed by `canonicalize`, normalizes
-and lowers phase bookkeeping, and imports the resulting Quake with
-`cql.compiler.import_quake`. Finally, `cql.compiler.synthesize` invokes the
-selected Python plugin. The complete `cudaq-fault-tolerant-target` pipeline is
-not used because it would synthesize the rotations before the plugin sees them.
+CUDA-Q compiles every Logical import through a `quake-unmapped` stage with the
+`t-count` cost model. From optimization level 2, that stage runs
+`fuse-1q-chains-for-clifford-t` before handing the kernel to Logical. The
+default level is 1, which does not fuse. The example imports the same kernel
+with `cql.compiler.import_cudaq(kernel, optimization_level=level)` at levels 1
+and 2, and `cql.compiler.synthesize` then invokes the selected Python plugin.
+`cudaq.estimate(kernel, optimization_level=2)` on a Logical target uses the
+same stage. The stage keeps rotations in its basis, so CUDA-Q never synthesizes
+them before the plugin sees them.
 
 The recording plugin delegates to native GridSynth so the comparison isolates
 the effect of fusion. The six original rotations become three, and the example

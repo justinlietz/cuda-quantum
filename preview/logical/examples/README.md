@@ -25,10 +25,11 @@ target.
    `estimate_using_kernel_profile()` directly for the default fast path;
    `estimate_physically()` is the direct, opt-in paper-scale compilation and
    scheduling path.
-7. `06_fusion_custom_synthesizer.py` explicitly runs single-qubit chain fusion
-   before importing a CUDA-Q kernel into logical P0 and invoking a user-provided
-   Rz synthesizer. It compares rotation counts, plugin calls, and T counts, and
-   checks both results against the original unitary at the same block precision.
+7. `06_fusion_custom_synthesizer.py` imports a CUDA-Q kernel into logical P0 at
+   optimization levels 1 and 2, where level 2 fuses one-qubit chains, and
+   invokes a user-provided Rz synthesizer. It compares rotation counts, plugin
+   calls, and T counts, and checks both results against the original unitary
+   at the same block precision.
 
 `steane_bell_e2e_workflow.py` follows a Bell pair through logical compilation,
 placement, QEC realization, and physical scheduling using Steane. It then
