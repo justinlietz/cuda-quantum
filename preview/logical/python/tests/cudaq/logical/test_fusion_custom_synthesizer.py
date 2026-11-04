@@ -48,3 +48,17 @@ def test_fused_word_still_requires_independent_verification(example):
         (), eps, 0.0, "incorrect-identity", plugin.name, plugin.version)
     with pytest.raises(RuntimeError, match="exceeds requested precision"):
         example["synthesize_chain"](fuse=True, synthesizer=plugin)
+
+
+@pytest.mark.parametrize("fuse", [False, True])
+def test_u3_synthesizer_receives_one_merged_chain(example, synthesizer_factory,
+                                                  fuse):
+    precision = 1e-6
+    plugin = synthesizer_factory(direct=True)
+    build, quake = example["synthesize_chain"](fuse=fuse,
+                                               synthesizer=plugin,
+                                               precision=precision)
+    assert example["rotation_count"](quake) == (3 if fuse else 6)
+    assert [call[0] for call in plugin.calls] == ["u3"]
+    assert plugin.calls[0][-1] <= precision / (2 * (3 if fuse else 6))
+    assert example["block_error"](build) <= precision
