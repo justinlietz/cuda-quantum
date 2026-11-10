@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0.
 
 import math
+import re
 from itertools import product
 
 import numpy as np
@@ -350,3 +351,72 @@ def test_rz_only_synthesizer_keeps_rz_calls(synthesizer_factory):
                             precision=1e-6,
                             synthesizer=synth)
     assert [call[0] for call in synth.calls] == ["rz", "rz"]
+
+
+def _two_qubit_unitary(build):
+    gates = {
+        "h": np.array([[1, 1], [1, -1]]) / math.sqrt(2),
+        "s": np.diag([1, 1j]),
+        "t": np.diag([1, np.exp(1j * math.pi / 4)]),
+    }
+    projectors, x = [np.diag([1, 0]), np.diag([0, 1])], np.array([[0, 1],
+                                                                  [1, 0]])
+    pattern = re.compile(r"(%[\w.]+)(?::2)? = qlx\.(?:prepare|apply "
+                         r"#qlx\.action<(\w+)>\(([^)]*)\))")
+    wires, result = {}, np.eye(4, dtype=complex)
+    for line in build.to_mlir().splitlines():
+        match = pattern.search(line)
+        if not match:
+            continue
+        name, gate, operands = match.groups()
+        if gate is None:
+            wires[name] = len(set(wires.values()))
+        elif gate == "cx":
+            control, target = (
+                wires[value.strip()] for value in operands.split(","))
+            wires[f"{name}#0"], wires[f"{name}#1"] = control, target
+            factors = [[np.eye(2)] * 2, [np.eye(2)] * 2]
+            factors[1][target] = x
+            factors[0][control], factors[1][control] = projectors
+            result = (np.kron(*factors[0]) + np.kron(*factors[1])) @ result
+        else:
+            qubit = wires[operands.strip()]
+            wires[name] = qubit
+            factors = [np.eye(2)] * 2
+            factors[qubit] = gates[gate]
+            result = np.kron(*factors) @ result
+    return result
+
+
+def test_runs_commute_through_cx_before_merging(synthesizer_factory):
+
+    @cql.program
+    def circuit() -> tuple[bool, bool]:
+        a = cql.rz(cql.prepare_zero(), 0.1234)
+        b = cql.rx(cql.prepare_zero(), 0.3456)
+        a, b = cql.cx(a, b)
+        a = cql.h(cql.rz(a, 0.2345))
+        b = cql.rx(b, 0.4567)
+        return cql.measure_z(a), cql.measure_z(b)
+
+    synth = synthesizer_factory(direct=True)
+    build = cql.compiler.synthesize(circuit,
+                                    gate_set=cql.compiler.clifford_t,
+                                    precision=1e-6,
+                                    synthesizer=synth)
+    assert [call[0] for call in synth.calls] == ["u3", "u3"]
+
+    def rz(angle):
+        return np.diag([np.exp(-0.5j * angle), np.exp(0.5j * angle)])
+
+    def rx(angle):
+        c, s = math.cos(angle / 2), math.sin(angle / 2)
+        return np.array([[c, -1j * s], [-1j * s, c]])
+
+    h = np.array([[1, 1], [1, -1]]) / math.sqrt(2)
+    cx = np.eye(4)[[0, 1, 3, 2]]
+    target = (np.kron(h @ rz(0.2345), rx(0.4567)) @ cx @ np.kron(
+        rz(0.1234), rx(0.3456)))
+    actual = _two_qubit_unitary(build)
+    phase = np.angle(np.trace(target.conj().T @ actual))
+    assert np.linalg.norm(actual - np.exp(1j * phase) * target, ord=2) <= 2e-6

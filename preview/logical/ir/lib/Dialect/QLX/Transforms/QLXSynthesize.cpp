@@ -738,6 +738,8 @@ struct RunMember {
   Mat2 unitary;
   std::optional<double> precision;
   bool offLattice = false;
+  /// 'Z' for Z-diagonal members, 'X' for X rotations, otherwise 0.
+  char axis = 0;
 };
 
 /// Anything unrecognized (dynamic, malformed, or exact rational-pi intent)
@@ -749,7 +751,8 @@ static std::optional<RunMember> runMember(ApplyOp operation,
       operation.getInputs().empty())
     return std::nullopt;
   if (auto unitary = cliffordTUnitary(builtin.getValue()))
-    return RunMember{*unitary, std::nullopt, false};
+    return RunMember{*unitary, std::nullopt, false,
+                     builtin.getValue() == BuiltinAction::h ? '\0' : 'Z'};
 
   auto parameters = operation.getParameters().value_or(DictionaryAttr{});
   auto integer = [&](StringRef name) {
@@ -786,21 +789,74 @@ static std::optional<RunMember> runMember(ApplyOp operation,
     char basis = xMask.getInt() ? (zMask.getInt() ? 'Y' : 'X') : 'Z';
     bool onLattice =
         exactLattice || approximateQuarterTurns(angle, precision).has_value();
-    return RunMember{pauliRotationUnitary(basis, angle), precision, !onLattice};
+    return RunMember{pauliRotationUnitary(basis, angle), precision, !onLattice,
+                     basis == 'Y' ? '\0' : basis};
   }
   default:
     return std::nullopt;
   }
 }
 
+/// Move each run that ends at a CX past it when every member commutes with
+/// that operand: Z-diagonal members on the control and X rotations on the
+/// target. The run then joins the run after the CX. Runs are visited in CX
+/// order, so a run can pass several CX gates.
+static void
+commuteRunsThroughCx(ModuleOp module,
+                     const llvm::MapVector<Operation *, RunMember> &members) {
+  SmallVector<ApplyOp> cxOperations;
+  module.walk([&](ApplyOp operation) {
+    auto builtin = dyn_cast<BuiltinActionAttr>(operation.getActionAttr());
+    if (builtin && builtin.getValue() == BuiltinAction::cx &&
+        operation.getInputs().size() == 2 && operation.getNumResults() == 2)
+      cxOperations.push_back(operation);
+  });
+
+  for (ApplyOp cx : cxOperations) {
+    for (unsigned index : {0u, 1u}) {
+      char axis = index == 0 ? 'Z' : 'X';
+      SmallVector<ApplyOp> reversedRun;
+      bool commutes = true;
+      Value input = cx.getInputs()[index];
+      while (auto producer = input.getDefiningOp<ApplyOp>()) {
+        auto found = members.find(producer.getOperation());
+        if (found == members.end() || !input.hasOneUse() ||
+            producer->getBlock() != cx->getBlock())
+          break;
+        if (found->second.axis != axis) {
+          commutes = false;
+          break;
+        }
+        reversedRun.push_back(producer);
+        input = producer.getInputs().front();
+      }
+      if (reversedRun.empty() || !commutes)
+        continue;
+
+      ApplyOp first = reversedRun.back(), last = reversedRun.front();
+      Value output = cx.getResult(index);
+      cx->setOperand(index, input);
+      output.replaceAllUsesWith(last.getResult(0));
+      first->setOperand(0, output);
+      Operation *anchor = cx;
+      for (ApplyOp operation : llvm::reverse(reversedRun)) {
+        operation->moveAfter(anchor);
+        anchor = operation;
+      }
+    }
+  }
+}
+
 /// Fuse each single-qubit chain containing an off-lattice rotation into one u3
-/// at the tightest member precision, less f64 rounding slack.
+/// at the tightest member precision, less f64 rounding slack. Chains that
+/// commute through CX gates are first moved so they fuse with later chains.
 static void mergeSingleQubitRuns(ModuleOp module, double defaultPrecision) {
   llvm::MapVector<Operation *, RunMember> members;
   module.walk([&](ApplyOp operation) {
     if (auto member = runMember(operation, defaultPrecision))
       members.insert({operation.getOperation(), std::move(*member)});
   });
+  commuteRunsThroughCx(module, members);
   auto successor = [&](ApplyOp operation) -> ApplyOp {
     Value result = operation.getResult(0);
     if (!result.hasOneUse())
