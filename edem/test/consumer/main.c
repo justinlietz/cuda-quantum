@@ -7,6 +7,7 @@
  *****************************************************************************/
 
 #include "cudaq/edem/core.h"
+#include "cudaq/edem/diagram.h"
 #include "cudaq/gf2/bump_allocator.h"
 #include "cudaq/gf2/core.h"
 #include <stddef.h>
@@ -33,5 +34,23 @@ int main(void) {
   cudaq_gf2_owned_buffer_release(&owner);
   if (owner.data || owner.size || owner.deallocate || owner.context)
     return 3;
+  cudaq_gf2_bump_reset(&scratch_arena);
+  cudaq_gf2_bump_reset(&result_arena);
+  int registry_identity;
+  cudaq_edem_diagram_description topology = {0};
+  topology.source_identity = topology.registry.source_identity =
+      &registry_identity;
+  cudaq_edem_diagram_view diagram;
+  cudaq_edem_diagram_info info;
+  if (cudaq_edem_diagram_validate(&topology, &memory) != CUDAQ_EDEM_OK)
+    return 4;
+  cudaq_gf2_bump_reset(&scratch_arena);
+  if (cudaq_edem_diagram_construct(&topology, &memory, &owner, &diagram) !=
+          CUDAQ_EDEM_OK ||
+      cudaq_edem_diagram_inspect(&diagram, &info) != CUDAQ_EDEM_OK ||
+      info.description.occurrence_count || info.boundary_count ||
+      info.outgoing_offsets[0])
+    return 4;
+  cudaq_gf2_owned_buffer_release(&owner);
   return 0;
 }

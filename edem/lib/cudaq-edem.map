@@ -14,6 +14,9 @@ CUDAQ_EDEM_0.1 {
     cudaq_edem_compose_chain;
     cudaq_edem_construct;
     cudaq_edem_describe_wire;
+    cudaq_edem_diagram_construct;
+    cudaq_edem_diagram_inspect;
+    cudaq_edem_diagram_validate;
     cudaq_edem_get_code;
     cudaq_edem_get_code_count;
     cudaq_edem_get_fault;

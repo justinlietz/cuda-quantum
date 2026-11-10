@@ -546,6 +546,100 @@ chains; it does not provide general diagrams or incremental window updates.
 Operations retain no state or caches. Scratch and results use the same per-call
 memory provider as construction.
 
+## Sparse diagram topology
+
+`cudaq/edem/diagram.h` constructs and inspects immutable topology without
+contracting it. A definition borrows one checked EDEM and maps ordered local
+ports to its independent input/output code-bundle ordinals. Use
+`CUDAQ_EDEM_NO_CODE_BUNDLE` for an absent preparation input or destructive
+readout output. Each model bundle must appear exactly once, including
+zero-width bundles.
+
+The registry descriptor is the minimum binding to a higher-level gadget
+registry: definition array indices are that registry's GadgetIds, and its
+nonnull `source_identity` is an address token identifying that particular
+registry. The topology description must carry the identical source token.
+The caller supplies the complete aligned definition table and correct
+contracts; names, entry counts and port shapes do not establish registry
+identity. No gadget registry or circuit is implemented by this API.
+
+For example, given borrowed `prep`, `se`, `cx`, and `readout` EDEM views with
+one code bundle per local block port (two for `cx`), this two-block experiment
+uses four shared definitions and nine distinct occurrences:
+
+```c
+const cudaq_edem_diagram_port prep_ports[] = {{CUDAQ_EDEM_NO_CODE_BUNDLE, 0}};
+const cudaq_edem_diagram_port se_ports[] = {{0, 0}};
+const cudaq_edem_diagram_port cx_ports[] = {{0, 0}, {1, 1}};
+const cudaq_edem_diagram_port read_ports[] = {{0, CUDAQ_EDEM_NO_CODE_BUNDLE}};
+const cudaq_edem_diagram_definition definitions[] = {
+    {prep, 1, prep_ports}, {se, 1, se_ports},
+    {cx, 2, cx_ports}, {readout, 1, read_ports}};
+const cudaq_edem_diagram_occurrence calls[] = {
+    {0}, {0}, {1}, {1}, {2}, {1}, {1}, {3}, {3}};
+const cudaq_edem_diagram_connection connections[] = {
+    {{0, 0}, {2, 0}}, {{1, 0}, {3, 0}},
+    {{2, 0}, {4, 0}}, {{3, 0}, {4, 1}},
+    {{4, 0}, {5, 0}}, {{4, 1}, {6, 0}},
+    {{5, 0}, {7, 0}}, {{6, 0}, {8, 0}}};
+/* source_registry points to the authoritative higher-level registry. */
+cudaq_edem_diagram_description topology = {0};
+topology.source_identity = source_registry;
+topology.registry = (cudaq_edem_diagram_registry){source_registry, 4, definitions};
+topology.occurrence_count = 9;
+topology.occurrences = calls;
+topology.connection_count = 8;
+topology.connections = connections;
+cudaq_gf2_owned_buffer owner = {0};
+cudaq_edem_diagram_view diagram;
+cudaq_edem_status status = cudaq_edem_diagram_construct(&topology, 0, &owner, &diagram);
+if (status != CUDAQ_EDEM_OK)
+  return status;
+cudaq_edem_diagram_info info;
+status = cudaq_edem_diagram_inspect(&diagram, &info);
+/* Inspect info while owner and every borrowed model remain alive. */
+cudaq_gf2_owned_buffer_release(&owner);
+return status;
+```
+
+A higher-level circuit adapter derives these connections from consecutive uses
+of each live block. The CNOT remains one occurrence with ordered control/target
+ports. Unrelated blocks need no extra dependency. A fresh preparation after
+destructive readout starts a disconnected lifetime; resource identity alone
+does not introduce an edge. For open diagrams, supply explicit ordered `inputs`
+and `outputs`. Every code input and output must be connected once or exposed
+once. Connections match the complete presentation name and V, S, L widths;
+there are no implicit zeros, discarded bundles, permutations or fan-out.
+Structural cycles, including self-loops through zero maps, are invalid.
+
+Inspection returns copied definitions, local mappings, occurrences, connections,
+ordered code boundaries, derived fault/response boundaries, a deterministic
+topological order, and outgoing sparse adjacency. Occurrence indices retain
+the supplied order even when the topological order differs. Sideband boundaries
+are grouped F, D, O, Success, then ordered by occurrence and local port. Their
+port indices and coordinate offsets restart for each kind. Original local
+indicator/row order is preserved. Resolve a boundary's local endpoint against
+its occurrence's model to retrieve the original exact fault laws or matrices.
+Four uses of `se` share its model bytes but have four independent local fault
+spaces; no cross-occurrence noise correlation is implied.
+
+Construction copies all topology records and uses one result allocation,
+borrowing immutable checked model payloads and the source identity token.
+Temporary description arrays and scratch may be released immediately. The
+model payloads, result allocator callbacks/context, and source identity must
+outlive the diagram. `cudaq_edem_diagram_validate` uses scratch only. Both
+operations follow the existing memory-provider and publication-on-failure
+conventions. Storage follows definitions, local port mappings, occurrences,
+connections and boundary incidences, with no dense node or transfer matrix.
+
+To replace noise, rebuild against an aligned replacement model table with the
+same source token and code connectivity. Changed probabilities, fault counts,
+and response sizes are taken from the replacement models; existing diagrams
+retain their original borrowed models. This API is C11 and usable from C++;
+Python bindings, a Logical circuit adapter, contraction, symbolic caches,
+window algorithms, general fan-out/observation, adaptive control, and
+serialization are outside this topology slice.
+
 ## Exact noise conversion and column coalescing
 
 Noise transformations are separate native operations in `cudaq/edem/noise.h`.

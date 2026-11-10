@@ -7,11 +7,17 @@
  ******************************************************************************/
 
 #include "cudaq/edem/core.h"
+#include "cudaq/edem/diagram.h"
 #include "cudaq/gf2/core.h"
 
 #include <type_traits>
 
 static_assert(std::is_standard_layout_v<cudaq_edem_description>);
+static_assert(std::is_standard_layout_v<cudaq_edem_diagram_description>);
+static_assert(std::is_trivially_copyable_v<cudaq_edem_diagram_view>);
+static_assert(std::is_trivially_copyable_v<cudaq_edem_diagram_info>);
+static_assert(
+    !std::is_convertible_v<cudaq_edem_diagram_view *, cudaq_edem_view *>);
 static_assert(std::is_trivially_copyable_v<cudaq_gf2_csc_view>);
 static_assert(std::is_standard_layout_v<cudaq_gf2_owned_buffer>);
 static_assert(std::is_trivially_copyable_v<cudaq_gf2_memory>);
