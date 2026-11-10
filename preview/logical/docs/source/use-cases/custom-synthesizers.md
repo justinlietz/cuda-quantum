@@ -116,10 +116,18 @@ the callback's floating-point inputs cannot discard that exact intent.
 Exact Clifford U3 actions use a shortest positive H/S word, so
 `u3(π/2, 0, π)` emits a single H and no T.
 
+When the plugin has a `u3` method, each run of H, S, T, and single-qubit Pauli
+rotations on one qubit that contains an off-lattice rotation is merged into
+one U3 at the run's tightest precision. Exact π/4-lattice runs and rotations
+with exact off-lattice rational-π angles are left unmerged. Before merging, a
+run that ends at a CX moves past it when every member commutes with that
+operand: S, T, and Z rotations on the control, or X rotations on the target.
+It then merges with the run after the CX. Plugins without a `u3` method are
+unaffected.
+
 This prototype supports U3 only in P0 programs. Synthesize before placement;
 the device path reports an error for an unlegalized U3. Quake U3 import,
-single-qubit merging, probabilistic output, and repeat-until-success synthesis
-are future work.
+probabilistic output, and repeat-until-success synthesis are future work.
 
 Run `examples/standalone/06_custom_synthesizer.py` for a self-contained example.
 Its toy synthesizer delegates to CUDA-Q GridSynth and composes Euler rotations;
